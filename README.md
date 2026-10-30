@@ -4,7 +4,9 @@
 Runs entirely in your CI: no SaaS, no server, and your plans never leave the runner unredacted.
 **tfscout never touches your cloud.** It only reads the plan file your pipeline already produces.
 
-📘 **[Setup guide](docs/setup.md)**: what you need, AWS OIDC in 10 minutes, Jenkins/GitLab, troubleshooting.
+🧪 **[Live demo](https://github.com/mikonoid/tfscout-demo)**: see real PR comments and drift issues, no AWS account needed.
+
+📘 **[Setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md)**: what you need, AWS OIDC in 10 minutes, Jenkins/GitLab, troubleshooting.
 
 - 🔎 **`review`** reads `terraform plan` in a pull request and posts a single, auto-updated comment with what
   changes, and what can break: data loss, open security groups, IAM wildcards, disabled encryption, forced
@@ -39,7 +41,7 @@ and can escalate but **never downgrade** a risky item. With `provider: none` tfs
 ## Quick start (GitHub Action)
 
 Already running `terraform plan` in GitHub Actions? Add one step. No new cloud credentials are needed.
-Otherwise see the [setup guide](docs/setup.md).
+Otherwise see the [setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md).
 
 ### Pull request review
 
@@ -89,9 +91,9 @@ steps:
       api-key: ${{ secrets.GEMINI_API_KEY }}
 ```
 
-Full workflows with a matrix over several directories: [examples/review.yml](examples/review.yml),
-[examples/drift.yml](examples/drift.yml).
-One-time AWS OIDC role for CI without stored keys: [examples/aws-oidc](examples/aws-oidc/main.tf).
+Full workflows with a matrix over several directories: [examples/review.yml](https://github.com/mikonoid/tfscout/blob/main/examples/review.yml),
+[examples/drift.yml](https://github.com/mikonoid/tfscout/blob/main/examples/drift.yml).
+One-time AWS OIDC role for CI without stored keys: [examples/aws-oidc](https://github.com/mikonoid/tfscout/blob/main/examples/aws-oidc/main.tf).
 
 ### Inputs
 
