@@ -111,7 +111,7 @@ tfscout speaks the OpenAI-compatible `/chat/completions` API, so you can use any
 
 | Provider | Cost | Key |
 |---|---|---|
-| `gemini` (default model `gemini-2.5-flash`) | free tier | [AI Studio](https://aistudio.google.com/apikey) → `GEMINI_API_KEY` |
+| `gemini` (default model `gemini-3.8-flash`) | free tier | [AI Studio](https://aistudio.google.com/apikey) → `GEMINI_API_KEY` |
 | `groq` | free tier | `GROQ_API_KEY` |
 | `openrouter` | free models available | `OPENROUTER_API_KEY` |
 | `openai` | paid | `OPENAI_API_KEY` |

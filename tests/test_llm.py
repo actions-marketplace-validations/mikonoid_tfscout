@@ -84,3 +84,15 @@ def test_client_no_retry_on_401(monkeypatch):
     with pytest.raises(LLMError, match="401"):
         LLMClient("https://x", "m").complete_json("s", "u")
     assert len(calls) == 1
+
+
+def test_404_lists_available_models(monkeypatch):
+    def fake_urlopen(req, timeout):
+        if req.full_url.endswith("/models"):
+            body = {"data": [{"id": "models/gemini-3.8-flash"}, {"id": "models/gemini-3.8-pro"}]}
+            return _Resp(json.dumps(body).encode())
+        raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, io.BytesIO(b"model gone"))
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(LLMError, match=r"--model.*Available: gemini-3.8-flash, gemini-3.8-pro"):
+        LLMClient("https://x", "old-model").complete_json("s", "u")

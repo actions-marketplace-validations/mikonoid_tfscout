@@ -17,10 +17,10 @@ from typing import Any
 PRESETS: dict[str, dict[str, str]] = {
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "key_env": "GEMINI_API_KEY",
     },
-    "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4.1-mini", "key_env": "OPENAI_API_KEY"},
+    "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-6-luna", "key_env": "OPENAI_API_KEY"},
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
         "model": "llama-3.3-70b-versatile",
@@ -28,7 +28,7 @@ PRESETS: dict[str, dict[str, str]] = {
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
-        "model": "openai/gpt-4.1-mini",
+        "model": "openai/gpt-6-luna",
         "key_env": "OPENROUTER_API_KEY",
     },
     "ollama": {"base_url": "http://localhost:11434/v1", "model": "qwen2.5-coder:7b", "key_env": ""},
@@ -67,6 +67,8 @@ class LLMClient:
             except urllib.error.HTTPError as e:
                 body = e.read().decode(errors="replace")[:500]
                 last = LLMError(f"HTTP {e.code} from {url}: {body}")
+                if e.code == 404:
+                    last = LLMError(f"{last} {self._model_hint()}")
                 if e.code not in (408, 429, 500, 502, 503, 504):
                     break
             except (urllib.error.URLError, TimeoutError) as e:
@@ -74,6 +76,28 @@ class LLMClient:
             if attempt < self.retries - 1:
                 time.sleep(2**attempt)
         raise last or LLMError("unknown error")
+
+    def list_models(self) -> list[str]:
+        """Model ids from the OpenAI-compatible `GET /models` endpoint (empty list on failure)."""
+        req = urllib.request.Request(self.base_url.rstrip("/") + "/models", headers={"User-Agent": "tfscout"})
+        if self.api_key:
+            req.add_header("Authorization", "Bearer " + self.api_key)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return []
+        items = data.get("data") if isinstance(data, dict) else None
+        ids = [str(m.get("id", "")) for m in items or [] if isinstance(m, dict)]
+        return sorted(i.removeprefix("models/") for i in ids if i)
+
+    def _model_hint(self) -> str:
+        hint = f"Model '{self.model}' may be unavailable; set --model or TFSCOUT_MODEL."
+        models = self.list_models()
+        if models:
+            shown = ", ".join(models[:20]) + (f" (+{len(models) - 20} more)" if len(models) > 20 else "")
+            hint += f" Available: {shown}"
+        return hint
 
     def complete_json(self, system: str, user: str) -> dict[str, Any]:
         payload = {
