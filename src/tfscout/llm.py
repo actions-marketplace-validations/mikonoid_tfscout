@@ -18,7 +18,7 @@ from typing import Any
 PRESETS: dict[str, dict[str, str]] = {
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "model": "gemini-3.8-flash",
+        "model": "gemini-flash-lite-latest,gemini-3.5-flash,gemini-flash-latest",
         "key_env": "GEMINI_API_KEY",
         # Gemini 3 models always think; "low" keeps latency reasonable for CI.
         "reasoning_effort": "low",
@@ -60,49 +60,57 @@ class LLMClient:
     temperature: float | None = 0.1
     max_timeouts: int = 2
 
+    @property
+    def models(self) -> list[str]:
+        """`model` may be a comma-separated fallback chain."""
+        return [m.strip() for m in self.model.split(",") if m.strip()] or [self.model]
+
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {"Content-Type": "application/json", "User-Agent": "tfscout"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        data = json.dumps(payload).encode()
         last: Exception | None = None
         timeouts = 0
-        for attempt in range(self.retries):
-            _log(f"asking {self.model} (attempt {attempt + 1}/{self.retries}, timeout {self.timeout:.0f}s)...")
+        models = self.models
+        schedule = [models[i % len(models)] for i in range(max(self.retries, len(models)))]
+        for attempt, model in enumerate(schedule):
+            nxt = schedule[attempt + 1] if attempt + 1 < len(schedule) else None
+            _log(f"asking {model} (attempt {attempt + 1}/{len(schedule)}, timeout {self.timeout:.0f}s)...")
             started = time.monotonic()
+            data = json.dumps({**payload, "model": model}).encode()
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     raw = resp.read()
-                _log(f"AI response received in {time.monotonic() - started:.1f}s")
+                _log(f"AI response from {model} in {time.monotonic() - started:.1f}s")
                 try:
                     return json.loads(raw)
                 except json.JSONDecodeError as e:
                     raise LLMError(f"non-JSON response from {url}: {raw[:120]!r}") from e
             except urllib.error.HTTPError as e:
                 body = e.read().decode(errors="replace")[:500]
-                last = LLMError(f"HTTP {e.code} from {url}: {body}")
+                last = LLMError(f"HTTP {e.code} from {url} ({model}): {body}")
                 if e.code == 404:
-                    last = LLMError(f"{last} {self._model_hint()}")
-                if e.code not in (408, 429, 500, 502, 503, 504):
+                    if nxt is None or nxt == model:
+                        last = LLMError(f"{last} {self._model_hint(model)}")
+                        break
+                elif e.code not in (408, 429, 500, 502, 503, 504):
                     break
-            except TimeoutError as e:
-                timeouts += 1
-                last = LLMError(f"no response from {self.model} within {self.timeout:.0f}s (use --timeout): {e}")
-                if timeouts >= self.max_timeouts:
-                    break
-            except urllib.error.URLError as e:
-                if isinstance(e.reason, TimeoutError):
+            except (TimeoutError, urllib.error.URLError) as e:
+                if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
                     timeouts += 1
-                    last = LLMError(f"no response from {self.model} within {self.timeout:.0f}s (use --timeout)")
-                    if timeouts >= self.max_timeouts:
+                    last = LLMError(f"no response from {model} within {self.timeout:.0f}s (use --timeout)")
+                    if len(models) == 1 and timeouts >= self.max_timeouts:
                         break
                 else:
                     last = LLMError(f"cannot reach {url}: {e}")
-            if attempt < self.retries - 1:
-                _log(f"retrying after: {last}")
-                time.sleep(2**attempt)
+            if nxt is not None:
+                if nxt == model:
+                    _log(f"retrying after: {last}")
+                    time.sleep(2**attempt)
+                else:
+                    _log(f"{model} failed ({str(last)[:120]}); falling back to {nxt}")
         raise last or LLMError("unknown error")
 
     def list_models(self) -> list[str]:
@@ -119,8 +127,8 @@ class LLMClient:
         ids = [str(m.get("id", "")) for m in items or [] if isinstance(m, dict)]
         return sorted(i.removeprefix("models/") for i in ids if i)
 
-    def _model_hint(self) -> str:
-        hint = f"Model '{self.model}' may be unavailable; set --model or TFSCOUT_MODEL."
+    def _model_hint(self, model: str) -> str:
+        hint = f"Model '{model}' may be unavailable; set --model or TFSCOUT_MODEL (comma-separated for fallbacks)."
         models = self.list_models()
         if models:
             shown = ", ".join(models[:20]) + (f" (+{len(models) - 20} more)" if len(models) > 20 else "")
@@ -129,7 +137,6 @@ class LLMClient:
 
     def complete_json(self, system: str, user: str) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "model": self.model,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }

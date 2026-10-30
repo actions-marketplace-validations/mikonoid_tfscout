@@ -124,3 +124,31 @@ def test_timeouts_give_up_after_two(monkeypatch):
     with pytest.raises(LLMError, match="within 5s"):
         LLMClient("https://x", "m", timeout=5).complete_json("s", "u")
     assert calls == [5, 5]
+
+
+def test_fallback_chain_on_overload(monkeypatch):
+    tried = []
+
+    def fake_urlopen(req, timeout):
+        model = json.loads(req.data)["model"]
+        tried.append(model)
+        if model == "busy":
+            raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, io.BytesIO(b"high demand"))
+        if model == "slow":
+            raise TimeoutError("timed out")
+        return _Resp(json.dumps({"choices": [{"message": {"content": '{"ok": true}'}}]}).encode())
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: pytest.fail("no backoff when switching models"))
+    assert LLMClient("https://x", "busy, slow ,good").complete_json("s", "u") == {"ok": True}
+    assert tried == ["busy", "slow", "good"]
+
+
+def test_fallback_skips_missing_model(monkeypatch):
+    def fake_urlopen(req, timeout):
+        if json.loads(req.data)["model"] == "gone":
+            raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, io.BytesIO(b"not found"))
+        return _Resp(json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode())
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    assert LLMClient("https://x", "gone,ok").complete_json("s", "u") == {}

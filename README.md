@@ -95,7 +95,7 @@ Full workflows with a matrix over several directories: [examples/review.yml](exa
 | `working-directory` | `.` | Root module directory |
 | `name` | working-directory | Label used in titles; keeps comments/issues per module separate |
 | `provider` | `none` | `none`, `gemini`, `groq`, `openrouter`, `openai`, `ollama`, `custom` |
-| `model` / `base-url` | preset | Override model / OpenAI-compatible endpoint |
+| `model` / `base-url` | preset | Override model (comma-separated = fallback chain on 503/429/timeout/404) / endpoint |
 | `timeout` | `90` | Seconds to wait for the LLM per attempt |
 | `reasoning-effort` | preset | `minimal`/`low`/`medium`/`high` for thinking models (gemini: `low`) |
 | `api-key` | — | LLM API key (use a secret) |
@@ -113,7 +113,7 @@ tfscout speaks the OpenAI-compatible `/chat/completions` API, so you can use any
 
 | Provider | Cost | Key |
 |---|---|---|
-| `gemini` (default model `gemini-3.8-flash`) | free tier | [AI Studio](https://aistudio.google.com/apikey) → `GEMINI_API_KEY` |
+| `gemini` (fallback chain `gemini-flash-lite-latest` → `gemini-3.5-flash` → `gemini-flash-latest`) | free tier | [AI Studio](https://aistudio.google.com/apikey) → `GEMINI_API_KEY` |
 | `groq` | free tier | `GROQ_API_KEY` |
 | `openrouter` | free models available | `OPENROUTER_API_KEY` |
 | `openai` | paid | `OPENAI_API_KEY` |
