@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from tfscout.diff import AttrDiff, diff
-from tfscout.plan import Change
+from tfscout.plan import Change, Resource
 
 SEVERITIES = ["info", "low", "medium", "high", "critical"]
 
@@ -291,6 +291,8 @@ NOISE_BY_TYPE = {
     "aws_eks_node_group": {"scaling_config[0].desired_size"},
     "aws_lambda_function": {"last_modified", "source_code_hash", "qualified_arn", "version"},
     "aws_launch_template": {"latest_version", "default_version"},
+    # Counters of attachments managed by separate resources; the attachment itself is what matters.
+    "aws_iam_policy": {"attachment_count"},
 }
 RISKY_TYPES = {
     "aws_security_group",
@@ -351,13 +353,64 @@ def _is_noise_path(c: Change, path: str) -> bool:
     return path in NOISE_BY_TYPE.get(c.type, set())
 
 
-def classify_drift(c: Change) -> DriftItem:
+@dataclass
+class DriftContext:
+    """What the rest of the configuration manages, to tell real drift from Terraform's own side effects."""
+
+    role_policy_arns: dict[str, set[str]] = field(default_factory=dict)
+    role_inline_policies: dict[str, set[str]] = field(default_factory=dict)
+
+    @classmethod
+    def from_state(cls, resources: list[Resource]) -> DriftContext:
+        ctx = cls()
+        for r in resources:
+            v = r.values
+            if r.type == "aws_iam_role_policy_attachment":
+                ctx.role_policy_arns.setdefault(str(v.get("role")), set()).add(str(v.get("policy_arn")))
+            elif r.type == "aws_iam_policy_attachment":
+                for role in v.get("roles") or []:
+                    ctx.role_policy_arns.setdefault(str(role), set()).add(str(v.get("policy_arn")))
+            elif r.type == "aws_iam_role_policy":
+                ctx.role_inline_policies.setdefault(str(v.get("role")), set()).add(str(v.get("name")))
+        return ctx
+
+
+def _explained_paths(c: Change, ctx: DriftContext) -> set[str]:
+    """Paths whose drift is caused by other Terraform-managed resources (e.g. a policy attachment
+    created after the role, so the role's recorded state doesn't list it yet)."""
+    if c.type != "aws_iam_role" or not isinstance(c.after, dict):
+        return set()
+    before = c.before if isinstance(c.before, dict) else {}
+    role = str(c.after.get("name"))
+    explained = set()
+    added = set(c.after.get("managed_policy_arns") or []) - set(before.get("managed_policy_arns") or [])
+    removed = set(before.get("managed_policy_arns") or []) - set(c.after.get("managed_policy_arns") or [])
+    if added and not removed and added <= ctx.role_policy_arns.get(role, set()):
+        explained.add("managed_policy_arns")
+
+    def names(v: Any) -> set[str]:
+        return {str(p.get("name")) for p in v or [] if isinstance(p, dict)}
+
+    new_inline = names(c.after.get("inline_policy")) - names(before.get("inline_policy"))
+    if new_inline and new_inline <= ctx.role_inline_policies.get(role, set()):
+        explained.add("inline_policy")
+    return explained
+
+
+def classify_drift(c: Change, ctx: DriftContext | None = None) -> DriftItem:
     if c.action == "delete":
         return DriftItem(c.address, c.type, c.action, "risky", reason="Resource was deleted outside Terraform")
     diffs = diff(c.before, c.after)
-    signal = [d for d in diffs if not _is_noise_path(c, d.path)]
+    explained = _explained_paths(c, ctx or DriftContext())
+    signal = [
+        d
+        for d in diffs
+        if not _is_noise_path(c, d.path) and not any(d.path == p or d.path.startswith(p + "[") for p in explained)
+    ]
     if not signal:
-        return DriftItem(c.address, c.type, c.action, "noise", diffs, reason="Only volatile attributes changed")
+        return DriftItem(
+            c.address, c.type, c.action, "noise", diffs, reason="Only volatile or Terraform-managed attributes changed"
+        )
     if c.type in RISKY_TYPES or any(RISKY_PATHS.search(d.path) for d in signal):
         return DriftItem(
             c.address,
@@ -372,6 +425,7 @@ def classify_drift(c: Change) -> DriftItem:
     )
 
 
-def drift_rules(drift: list[Change]) -> list[DriftItem]:
+def drift_rules(drift: list[Change], prior_resources: list[Resource] | None = None) -> list[DriftItem]:
+    ctx = DriftContext.from_state(prior_resources or [])
     order = {k: i for i, k in enumerate(reversed(DRIFT_CLASSES))}
-    return sorted((classify_drift(c) for c in drift), key=lambda i: (order[i.classification], i.resource))
+    return sorted((classify_drift(c, ctx) for c in drift), key=lambda i: (order[i.classification], i.resource))

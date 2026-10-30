@@ -38,10 +38,33 @@ class Change:
 
 
 @dataclass
+class Resource:
+    """A resource as recorded in the prior state (used for cross-resource context)."""
+
+    address: str
+    type: str
+    values: dict[str, Any]
+
+
+@dataclass
 class Plan:
     terraform_version: str = ""
     changes: list[Change] = field(default_factory=list)
     drift: list[Change] = field(default_factory=list)
+    prior_resources: list[Resource] = field(default_factory=list)
+
+
+def _state_resources(module: dict[str, Any] | None) -> list[Resource]:
+    if not isinstance(module, dict):
+        return []
+    out = [
+        Resource(r.get("address", "?"), r.get("type", "?"), r.get("values") or {})
+        for r in module.get("resources") or []
+        if r.get("mode", "managed") == "managed"
+    ]
+    for child in module.get("child_modules") or []:
+        out += _state_resources(child)
+    return out
 
 
 def _to_change(entry: dict[str, Any]) -> Change:
@@ -75,6 +98,7 @@ def parse_plan(data: dict[str, Any]) -> Plan:
         terraform_version=data.get("terraform_version", ""),
         changes=[c for c in map(_to_change, data.get("resource_changes") or []) if _is_actionable(c)],
         drift=[c for c in map(_to_change, data.get("resource_drift") or []) if _is_actionable(c)],
+        prior_resources=_state_resources(((data.get("prior_state") or {}).get("values") or {}).get("root_module")),
     )
 
 

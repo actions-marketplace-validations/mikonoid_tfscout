@@ -80,3 +80,55 @@ def test_object_lists_diff_as_sets():
     d = diff({"ingress": [https, ssh]}, {"ingress": [https]})
     assert [(x.path, x.after) for x in d] == [("ingress[-]", None)]
     assert diff({"ingress": [https]}, {"ingress": [dict(reversed(list(https.items())))]}) == []
+
+
+def _role_drift(arns):
+    return Change(
+        "aws_iam_role.ci",
+        "aws_iam_role",
+        "ci",
+        "",
+        ["update"],
+        before={"name": "ci", "managed_policy_arns": []},
+        after={"name": "ci", "managed_policy_arns": arns},
+    )
+
+
+def test_drift_attachment_managed_by_terraform_is_noise():
+    from tfscout.plan import Resource
+    from tfscout.rules import drift_rules
+
+    state = [
+        Resource(
+            "aws_iam_role_policy_attachment.ci",
+            "aws_iam_role_policy_attachment",
+            {"role": "ci", "policy_arn": "arn:aws:iam::1:policy/ci"},
+        )
+    ]
+    policy = Change(
+        "aws_iam_policy.ci",
+        "aws_iam_policy",
+        "ci",
+        "",
+        ["update"],
+        before={"attachment_count": 0},
+        after={"attachment_count": 1},
+    )
+    items = drift_rules([_role_drift(["arn:aws:iam::1:policy/ci"]), policy], state)
+    assert [i.classification for i in items] == ["noise", "noise"]
+
+
+def test_drift_manual_admin_attachment_is_risky():
+    from tfscout.plan import Resource
+    from tfscout.rules import drift_rules
+
+    state = [
+        Resource(
+            "aws_iam_role_policy_attachment.ci",
+            "aws_iam_role_policy_attachment",
+            {"role": "ci", "policy_arn": "arn:aws:iam::1:policy/ci"},
+        )
+    ]
+    admin = "arn:aws:iam::aws:policy/AdministratorAccess"
+    items = drift_rules([_role_drift(["arn:aws:iam::1:policy/ci", admin])], state)
+    assert items[0].classification == "risky"

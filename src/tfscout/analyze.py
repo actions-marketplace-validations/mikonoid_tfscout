@@ -191,7 +191,7 @@ class DriftReport:
 
 
 def run_drift(plan: Plan, client: LLMClient | None) -> DriftReport:
-    report = DriftReport(items=drift_rules([redact_change(c) for c in plan.drift]))
+    report = DriftReport(items=drift_rules([redact_change(c) for c in plan.drift], plan.prior_resources))
     if not report.items or client is None:
         return report
 
