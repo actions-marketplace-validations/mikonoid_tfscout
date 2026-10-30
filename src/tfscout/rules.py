@@ -345,6 +345,8 @@ class DriftItem:
     reason: str = ""
     explanation: str = ""
     recommendation: str = ""
+    # Classification proven from state (not a guess); the LLM must not override it.
+    locked: bool = False
 
 
 def _is_noise_path(c: Change, path: str) -> bool:
@@ -408,9 +410,17 @@ def classify_drift(c: Change, ctx: DriftContext | None = None) -> DriftItem:
         if not _is_noise_path(c, d.path) and not any(d.path == p or d.path.startswith(p + "[") for p in explained)
     ]
     if not signal:
-        return DriftItem(
-            c.address, c.type, c.action, "noise", diffs, reason="Only volatile or Terraform-managed attributes changed"
-        )
+        if explained:
+            return DriftItem(
+                c.address,
+                c.type,
+                c.action,
+                "noise",
+                diffs,
+                reason="Side effect of resources Terraform manages (e.g. a policy attachment), not a manual change",
+                locked=True,
+            )
+        return DriftItem(c.address, c.type, c.action, "noise", diffs, reason="Only volatile attributes changed")
     if c.type in RISKY_TYPES or any(RISKY_PATHS.search(d.path) for d in signal):
         return DriftItem(
             c.address,
@@ -428,4 +438,7 @@ def classify_drift(c: Change, ctx: DriftContext | None = None) -> DriftItem:
 def drift_rules(drift: list[Change], prior_resources: list[Resource] | None = None) -> list[DriftItem]:
     ctx = DriftContext.from_state(prior_resources or [])
     order = {k: i for i, k in enumerate(reversed(DRIFT_CLASSES))}
-    return sorted((classify_drift(c, ctx) for c in drift), key=lambda i: (order[i.classification], i.resource))
+    items = [classify_drift(c, ctx) for c in drift]
+    # Drop entries with no visible difference (e.g. null vs empty normalisation by the provider).
+    items = [i for i in items if i.diffs or i.action != "update"]
+    return sorted(items, key=lambda i: (order[i.classification], i.resource))

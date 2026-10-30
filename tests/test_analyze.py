@@ -111,3 +111,23 @@ def test_drift_markdown(drift_plan):
 def test_no_changes():
     assert "No changes" in render_review_md(run_review(Plan(), None))
     assert "No drift" in render_drift_md(run_drift(Plan(), None))
+
+
+def test_drift_ai_cannot_override_proven_noise(fake_llm):
+    from tfscout.plan import Change, Resource
+
+    role = Change(
+        "aws_iam_role.ci",
+        "aws_iam_role",
+        "ci",
+        "",
+        ["update"],
+        before={"name": "ci", "managed_policy_arns": []},
+        after={"name": "ci", "managed_policy_arns": ["arn:p"]},
+    )
+    empty = Change("aws_s3_bucket.b", "aws_s3_bucket", "b", "", ["update"], before={"x": None}, after={"x": ""})
+    state = [Resource("a", "aws_iam_role_policy_attachment", {"role": "ci", "policy_arn": "arn:p"})]
+    llm = fake_llm({"items": [{"resource": "aws_iam_role.ci", "classification": "manual-change"}]})
+    r = run_drift(Plan(drift=[role, empty], prior_resources=state), llm)
+    assert [(i.resource, i.classification) for i in r.items] == [("aws_iam_role.ci", "noise")]
+    assert '"classification_is_final": true' in llm.calls[0][1]

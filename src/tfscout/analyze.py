@@ -47,6 +47,8 @@ DRIFT_SYSTEM = """\
 You are tfscout, a senior platform engineer analysing Terraform DRIFT: differences between the Terraform state
 and real infrastructure that were made outside Terraform. Secrets are redacted as [REDACTED].
 Each item has a preliminary classification from rules: noise | manual-change | risky.
+If "classification_is_final" is true, the rules proved it from the Terraform state: keep that classification
+and only explain it.
 
 For every item return:
 - "classification": noise (volatile/auto-managed values), manual-change (someone changed it by hand,
@@ -202,6 +204,7 @@ def run_drift(plan: Plan, client: LLMClient | None) -> DriftReport:
                 "type": i.type,
                 "action": i.action,
                 "preliminary_classification": i.classification,
+                "classification_is_final": i.locked,
                 "reason": i.reason,
                 "diff": [{"path": d.path, "state": d.before, "real": d.after} for d in i.diffs][
                     :MAX_DIFFS_PER_RESOURCE
@@ -225,8 +228,9 @@ def run_drift(plan: Plan, client: LLMClient | None) -> DriftReport:
             continue
         item = by_res[ai["resource"]]
         cls = str(ai.get("classification", "")).lower()
-        # Rules are security-first: the model may escalate but never downgrade a risky item.
-        if cls in DRIFT_CLASSES and item.classification != "risky":
+        # Rules are security-first: the model may escalate but never downgrade a risky item,
+        # and never overrides a classification proven from state.
+        if cls in DRIFT_CLASSES and item.classification != "risky" and not item.locked:
             item.classification = cls
         item.explanation = str(ai.get("explanation", ""))[:1000]
         item.recommendation = str(ai.get("recommendation", ""))[:1500]
