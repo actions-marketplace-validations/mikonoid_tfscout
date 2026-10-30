@@ -1,0 +1,44 @@
+# Example: nightly drift detection with tfscout.
+# Copy to .github/workflows/tfscout-drift.yml in your infrastructure repo.
+name: tfscout drift
+
+on:
+  schedule:
+    - cron: "0 6 * * 1-5" # weekdays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write # AWS OIDC
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [envs/staging, envs/prod]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/terraform-plan-readonly
+          aws-region: us-east-1
+      - run: terraform init -input=false
+      - run: terraform plan -refresh-only -input=false -lock=false -out=drift.tfplan
+
+      # Creates one issue per directory, updates it when drift changes, closes it when drift is gone.
+      - uses: mikonoid/tfscout@v0
+        with:
+          mode: drift
+          working-directory: ${{ matrix.dir }}
+          plan: drift.tfplan
+          provider: gemini # free tier key from https://aistudio.google.com/apikey
+          api-key: ${{ secrets.GEMINI_API_KEY }}

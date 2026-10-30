@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tfscout"
+dynamic = ["version"]
+description = "AI-assisted Terraform plan review and drift detection"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "mikonoid" }]
+keywords = ["terraform", "opentofu", "drift", "iac", "devsecops", "llm", "github-action"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: System :: Systems Administration",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+tfscout = "tfscout.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mikonoid/tfscout"
+Issues = "https://github.com/mikonoid/tfscout/issues"
+
+[tool.hatch.version]
+path = "src/tfscout/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tfscout"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

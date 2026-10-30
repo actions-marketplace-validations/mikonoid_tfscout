@@ -1,0 +1,107 @@
+name: tfscout
+description: AI-assisted Terraform/OpenTofu plan review and drift detection. Explains risks in PR comments and drift in issues.
+author: mikonoid
+branding:
+  icon: search
+  color: purple
+
+inputs:
+  mode:
+    description: "`review` (comment on a PR with plan risks) or `drift` (analyse a `plan -refresh-only` and sync an issue)"
+    required: true
+  plan:
+    description: Path to the plan file (binary `-out` file or `terraform show -json` output), relative to working-directory
+    required: true
+  working-directory:
+    description: Terraform root module directory (needed to read binary plans)
+    default: "."
+  name:
+    description: Label for this root module, used in comment/issue titles and to keep them separate (defaults to working-directory)
+    default: ""
+  provider:
+    description: "LLM provider: none (rules only), gemini (free tier), groq, openrouter, openai, ollama, custom"
+    default: none
+  model:
+    description: Override the model name
+    default: ""
+  base-url:
+    description: Override the OpenAI-compatible endpoint (required for provider `custom`)
+    default: ""
+  api-key:
+    description: API key for the LLM provider (pass it from a secret)
+    default: ""
+  github-token:
+    description: Token used for PR comments and drift issues
+    default: ${{ github.token }}
+  comment:
+    description: "review: create/update a PR comment. drift: create/update/close a drift issue"
+    default: "true"
+  fail-on:
+    description: "review: fail the step when a finding has at least this severity (none|info|low|medium|high|critical)"
+    default: none
+  fail-on-drift:
+    description: "drift: fail the step when actionable drift is found"
+    default: "false"
+  terraform-bin:
+    description: terraform or tofu binary used to read binary plans
+    default: terraform
+
+outputs:
+  max-severity:
+    description: "review: highest finding severity (or `none`)"
+    value: ${{ steps.run.outputs.max-severity }}
+  findings-count:
+    description: Number of findings (review) or actionable drift items (drift)
+    value: ${{ steps.run.outputs.findings-count }}
+  drift-detected:
+    description: "drift: `true` when actionable drift was found"
+    value: ${{ steps.run.outputs.drift-detected }}
+  fingerprint:
+    description: "drift: stable id of the current drift"
+    value: ${{ steps.run.outputs.fingerprint }}
+  report-file:
+    description: Path to the rendered Markdown report
+    value: ${{ steps.run.outputs.report-file }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/src
+        IN_MODE: ${{ inputs.mode }}
+        IN_PLAN: ${{ inputs.plan }}
+        IN_NAME: ${{ inputs.name || inputs.working-directory }}
+        IN_PROVIDER: ${{ inputs.provider }}
+        IN_MODEL: ${{ inputs.model }}
+        IN_BASE_URL: ${{ inputs.base-url }}
+        IN_COMMENT: ${{ inputs.comment }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
+        IN_TF_BIN: ${{ inputs.terraform-bin }}
+        TFSCOUT_API_KEY: ${{ inputs.api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+          echo "::error::tfscout needs python3 >= 3.10 on the runner (add actions/setup-python)"
+          exit 1
+        fi
+        case "$IN_MODE" in review|drift) ;; *) echo "::error::mode must be 'review' or 'drift'"; exit 1 ;; esac
+
+        report="$RUNNER_TEMP/tfscout-${IN_MODE}-$(printf '%s' "$IN_NAME" | tr -c 'A-Za-z0-9._-' '_').md"
+        args=("$IN_MODE" "$IN_PLAN" --name "$IN_NAME" --provider "$IN_PROVIDER" --terraform-bin "$IN_TF_BIN" --output "$report")
+        [[ -n "$IN_MODEL" ]] && args+=(--model "$IN_MODEL")
+        [[ -n "$IN_BASE_URL" ]] && args+=(--base-url "$IN_BASE_URL")
+        if [[ "$IN_MODE" == review ]]; then
+          [[ "$IN_COMMENT" == true ]] && args+=(--github-comment)
+          args+=(--fail-on "$IN_FAIL_ON")
+        else
+          [[ "$IN_COMMENT" == true ]] && args+=(--github-issue)
+          [[ "$IN_FAIL_ON_DRIFT" == true ]] && args+=(--exit-code)
+        fi
+
+        echo "report-file=$report" >> "$GITHUB_OUTPUT"
+        python3 -m tfscout "${args[@]}"

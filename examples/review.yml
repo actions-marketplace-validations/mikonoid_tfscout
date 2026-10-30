@@ -1,0 +1,43 @@
+# Example: review every Terraform pull request with tfscout.
+# Copy to .github/workflows/tfscout-review.yml in your infrastructure repo.
+name: tfscout review
+
+on:
+  pull_request:
+    paths: ["**/*.tf", "**/*.tfvars", "**/.terraform.lock.hcl"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write # AWS OIDC
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [envs/staging, envs/prod]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/terraform-plan-readonly
+          aws-region: us-east-1
+      - run: terraform init -input=false
+      - run: terraform plan -input=false -lock=false -out=tfplan
+
+      - uses: mikonoid/tfscout@v0
+        with:
+          mode: review
+          working-directory: ${{ matrix.dir }}
+          plan: tfplan
+          provider: gemini # free tier key from https://aistudio.google.com/apikey
+          api-key: ${{ secrets.GEMINI_API_KEY }}
+          fail-on: critical # optional: block merges on critical findings

@@ -1,0 +1,134 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.main",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["delete", "create"],
+        "before": {
+          "identifier": "orders-db",
+          "engine": "postgres",
+          "engine_version": "14.10",
+          "instance_class": "db.t3.medium",
+          "username": "app",
+          "password": "SuperSecret123!",
+          "storage_encrypted": true,
+          "publicly_accessible": false,
+          "deletion_protection": true,
+          "availability_zone": "us-east-1a"
+        },
+        "after": {
+          "identifier": "orders-db",
+          "engine": "postgres",
+          "engine_version": "14.10",
+          "instance_class": "db.t3.medium",
+          "username": "app",
+          "password": "SuperSecret123!",
+          "storage_encrypted": false,
+          "publicly_accessible": false,
+          "deletion_protection": false,
+          "availability_zone": "us-east-1b"
+        },
+        "after_unknown": {"id": true, "endpoint": true},
+        "replace_paths": [["availability_zone"]],
+        "before_sensitive": {"password": true},
+        "after_sensitive": {"password": true}
+      }
+    },
+    {
+      "address": "aws_security_group.web",
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "web",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {
+          "name": "web",
+          "ingress": [
+            {"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"], "ipv6_cidr_blocks": []}
+          ]
+        },
+        "after": {
+          "name": "web",
+          "ingress": [
+            {"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"], "ipv6_cidr_blocks": []},
+            {"from_port": 22, "to_port": 22, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"], "ipv6_cidr_blocks": []}
+          ]
+        },
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_iam_policy.ci",
+      "mode": "managed",
+      "type": "aws_iam_policy",
+      "name": "ci",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "ci-deployer",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+        },
+        "after_unknown": {"arn": true, "id": true},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_ssm_parameter.api",
+      "mode": "managed",
+      "type": "aws_ssm_parameter",
+      "name": "api",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {"name": "/app/api", "type": "SecureString", "value": "AKIAABCDEFGHIJKLMNOP", "description": "not sensitive-marked"},
+        "after_unknown": {"arn": true},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_instance.app",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "app",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": ["update"],
+        "before": {"instance_type": "t3.small", "tags": {"Name": "app"}, "tags_all": {"Name": "app"}},
+        "after": {"instance_type": "t3.large", "tags": {"Name": "app"}, "tags_all": {"Name": "app"}},
+        "after_unknown": {},
+        "before_sensitive": {},
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "aws_lambda_function.noop",
+      "mode": "managed",
+      "type": "aws_lambda_function",
+      "name": "noop",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {"actions": ["no-op"], "before": {}, "after": {}}
+    },
+    {
+      "address": "data.aws_caller_identity.current",
+      "mode": "data",
+      "type": "aws_caller_identity",
+      "name": "current",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {"actions": ["read"], "before": null, "after": {}}
+    }
+  ]
+}
