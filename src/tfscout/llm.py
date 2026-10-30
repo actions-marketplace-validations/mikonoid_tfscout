@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -19,6 +20,10 @@ PRESETS: dict[str, dict[str, str]] = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "model": "gemini-3.8-flash",
         "key_env": "GEMINI_API_KEY",
+        # Gemini 3 models always think; "low" keeps latency reasonable for CI.
+        "reasoning_effort": "low",
+        # Google recommends the default temperature (1.0) for Gemini 3; lower values can cause looping.
+        "temperature": "default",
     },
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-6-luna", "key_env": "OPENAI_API_KEY"},
     "groq": {
@@ -40,13 +45,20 @@ class LLMError(Exception):
     pass
 
 
+def _log(msg: str) -> None:
+    print(f"tfscout: {msg}", file=sys.stderr, flush=True)
+
+
 @dataclass
 class LLMClient:
     base_url: str
     model: str
     api_key: str = ""
-    timeout: float = 120.0
+    timeout: float = 90.0
     retries: int = 3
+    reasoning_effort: str = ""
+    temperature: float | None = 0.1
+    max_timeouts: int = 2
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = self.base_url.rstrip("/") + "/chat/completions"
@@ -55,11 +67,15 @@ class LLMClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         data = json.dumps(payload).encode()
         last: Exception | None = None
+        timeouts = 0
         for attempt in range(self.retries):
+            _log(f"asking {self.model} (attempt {attempt + 1}/{self.retries}, timeout {self.timeout:.0f}s)...")
+            started = time.monotonic()
             req = urllib.request.Request(url, data=data, headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     raw = resp.read()
+                _log(f"AI response received in {time.monotonic() - started:.1f}s")
                 try:
                     return json.loads(raw)
                 except json.JSONDecodeError as e:
@@ -71,9 +87,21 @@ class LLMClient:
                     last = LLMError(f"{last} {self._model_hint()}")
                 if e.code not in (408, 429, 500, 502, 503, 504):
                     break
-            except (urllib.error.URLError, TimeoutError) as e:
-                last = LLMError(f"cannot reach {url}: {e}")
+            except TimeoutError as e:
+                timeouts += 1
+                last = LLMError(f"no response from {self.model} within {self.timeout:.0f}s (use --timeout): {e}")
+                if timeouts >= self.max_timeouts:
+                    break
+            except urllib.error.URLError as e:
+                if isinstance(e.reason, TimeoutError):
+                    timeouts += 1
+                    last = LLMError(f"no response from {self.model} within {self.timeout:.0f}s (use --timeout)")
+                    if timeouts >= self.max_timeouts:
+                        break
+                else:
+                    last = LLMError(f"cannot reach {url}: {e}")
             if attempt < self.retries - 1:
+                _log(f"retrying after: {last}")
                 time.sleep(2**attempt)
         raise last or LLMError("unknown error")
 
@@ -100,12 +128,15 @@ class LLMClient:
         return hint
 
     def complete_json(self, system: str, user: str) -> dict[str, Any]:
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
-            "temperature": 0.1,
             "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         resp = self._post(payload)
         try:
             content = resp["choices"][0]["message"]["content"]
@@ -132,7 +163,13 @@ def parse_json_content(content: str) -> dict[str, Any]:
 
 
 def make_client(
-    provider: str, model: str = "", base_url: str = "", api_key: str = "", env: dict[str, str] | None = None
+    provider: str,
+    model: str = "",
+    base_url: str = "",
+    api_key: str = "",
+    env: dict[str, str] | None = None,
+    timeout: float = 90.0,
+    reasoning_effort: str = "",
 ) -> LLMClient | None:
     env = os.environ if env is None else env
     if provider == "none":
@@ -140,11 +177,24 @@ def make_client(
     if provider == "custom":
         if not base_url or not model:
             raise LLMError("provider 'custom' requires --base-url and --model")
-        return LLMClient(base_url, model, api_key or env.get("TFSCOUT_API_KEY", ""))
+        return LLMClient(
+            base_url,
+            model,
+            api_key or env.get("TFSCOUT_API_KEY", ""),
+            timeout=timeout,
+            reasoning_effort=reasoning_effort,
+        )
     if provider not in PRESETS:
         raise LLMError(f"unknown provider '{provider}', choose one of: {', '.join(PROVIDERS)}")
     p = PRESETS[provider]
     key = api_key or env.get("TFSCOUT_API_KEY", "") or (env.get(p["key_env"], "") if p["key_env"] else "")
     if p["key_env"] and not key:
         raise LLMError(f"provider '{provider}' needs an API key (--api-key, TFSCOUT_API_KEY or {p['key_env']})")
-    return LLMClient(base_url or p["base_url"], model or p["model"], key)
+    return LLMClient(
+        base_url or p["base_url"],
+        model or p["model"],
+        key,
+        timeout=timeout,
+        reasoning_effort=reasoning_effort or p.get("reasoning_effort", ""),
+        temperature=None if p.get("temperature") == "default" else 0.1,
+    )

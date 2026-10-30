@@ -96,3 +96,31 @@ def test_404_lists_available_models(monkeypatch):
     monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
     with pytest.raises(LLMError, match=r"--model.*Available: gemini-3.8-flash, gemini-3.8-pro"):
         LLMClient("https://x", "old-model").complete_json("s", "u")
+
+
+def test_gemini_payload_low_reasoning_default_temperature(monkeypatch):
+    sent = []
+
+    def fake_urlopen(req, timeout):
+        sent.append(json.loads(req.data))
+        return _Resp(json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode())
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    make_client("gemini", env={"GEMINI_API_KEY": "g"}).complete_json("s", "u")
+    assert sent[0]["reasoning_effort"] == "low" and "temperature" not in sent[0]
+    make_client("openai", env={"OPENAI_API_KEY": "k"}).complete_json("s", "u")
+    assert "reasoning_effort" not in sent[1] and sent[1]["temperature"] == 0.1
+
+
+def test_timeouts_give_up_after_two(monkeypatch):
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(timeout)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    with pytest.raises(LLMError, match="within 5s"):
+        LLMClient("https://x", "m", timeout=5).complete_json("s", "u")
+    assert calls == [5, 5]

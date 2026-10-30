@@ -96,6 +96,8 @@ Full workflows with a matrix over several directories: [examples/review.yml](exa
 | `name` | working-directory | Label used in titles; keeps comments/issues per module separate |
 | `provider` | `none` | `none`, `gemini`, `groq`, `openrouter`, `openai`, `ollama`, `custom` |
 | `model` / `base-url` | preset | Override model / OpenAI-compatible endpoint |
+| `timeout` | `90` | Seconds to wait for the LLM per attempt |
+| `reasoning-effort` | preset | `minimal`/`low`/`medium`/`high` for thinking models (gemini: `low`) |
 | `api-key` | — | LLM API key (use a secret) |
 | `comment` | `true` | Post PR comment (review) or sync the drift issue (drift) |
 | `fail-on` | `none` | review: fail when a finding is at least this severity |

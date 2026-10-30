@@ -40,6 +40,17 @@ def _common(p: argparse.ArgumentParser) -> None:
         "--base-url", default=os.environ.get("TFSCOUT_BASE_URL", ""), help="override the OpenAI-compatible endpoint"
     )
     p.add_argument("--api-key", default="", help="API key (prefer env TFSCOUT_API_KEY or provider env var)")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.environ.get("TFSCOUT_TIMEOUT", "90")),
+        help="seconds to wait for the LLM per attempt (default: 90)",
+    )
+    p.add_argument(
+        "--reasoning-effort",
+        default=os.environ.get("TFSCOUT_REASONING_EFFORT", ""),
+        help="reasoning_effort for thinking models: minimal|low|medium|high (gemini default: low)",
+    )
     p.add_argument("--format", choices=["markdown", "json"], default="markdown")
     p.add_argument("--output", "-o", default="", help="write the report to a file instead of stdout")
     p.add_argument("--terraform-bin", default="terraform", help="terraform/tofu binary for binary plans")
@@ -150,7 +161,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         plan = load_plan(args.plan, args.terraform_bin, args.chdir)
-        client = make_client(args.provider, args.model, args.base_url, args.api_key)
+        client = make_client(
+            args.provider,
+            args.model,
+            args.base_url,
+            args.api_key,
+            timeout=args.timeout,
+            reasoning_effort=args.reasoning_effort,
+        )
     except (PlanError, LLMError) as e:
         print(f"tfscout: error: {e}", file=sys.stderr)
         return 1

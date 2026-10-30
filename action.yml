@@ -30,6 +30,12 @@ inputs:
   api-key:
     description: API key for the LLM provider (pass it from a secret)
     default: ""
+  timeout:
+    description: Seconds to wait for the LLM per attempt
+    default: "90"
+  reasoning-effort:
+    description: "reasoning_effort for thinking models: minimal|low|medium|high (gemini default: low)"
+    default: ""
   github-token:
     description: Token used for PR comments and drift issues
     default: ${{ github.token }}
@@ -82,6 +88,8 @@ runs:
         IN_FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
         IN_TF_BIN: ${{ inputs.terraform-bin }}
         TFSCOUT_API_KEY: ${{ inputs.api-key }}
+        TFSCOUT_TIMEOUT: ${{ inputs.timeout }}
+        TFSCOUT_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
         set -euo pipefail
