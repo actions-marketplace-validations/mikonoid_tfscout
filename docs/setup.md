@@ -101,7 +101,7 @@ Both use `terraform plan -lock=false`, so the read-only role never needs to writ
 tfscout is a plain Python CLI (≥ 3.10, no dependencies). Run it wherever you already have a plan:
 
 ```bash
-pip install git+https://github.com/mikonoid/tfscout   # PyPI package coming soon
+pipx install tfscout          # or: pip install tfscout
 
 terraform plan -out=tfplan
 tfscout review tfplan                            # Markdown to stdout

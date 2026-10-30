@@ -142,7 +142,7 @@ tfscout speaks the OpenAI-compatible `/chat/completions` API, so you can use any
 ## CLI
 
 ```bash
-pip install git+https://github.com/mikonoid/tfscout   # PyPI package coming soon
+pipx install tfscout          # or: pip install tfscout
 
 terraform plan -out=tfplan
 tfscout review tfplan                                  # rules only
