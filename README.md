@@ -44,8 +44,8 @@ permissions:
   id-token: write   # for cloud OIDC
 
 steps:
-  - uses: actions/checkout@v4
-  - uses: hashicorp/setup-terraform@v3
+  - uses: actions/checkout@v7
+  - uses: hashicorp/setup-terraform@v4
     with: { terraform_wrapper: false }
   # ... configure cloud credentials ...
   - run: terraform init -input=false && terraform plan -input=false -lock=false -out=tfplan
