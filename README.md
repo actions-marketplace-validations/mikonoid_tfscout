@@ -1,47 +1,32 @@
 # tfscout
 
-**AI-assisted plan review and drift detection for Terraform / OpenTofu.**
-Runs entirely in your CI: no SaaS, no server, and your plans never leave the runner unredacted.
-**tfscout never touches your cloud.** It only reads the plan file your pipeline already produces.
+Plan review and drift detection for Terraform and OpenTofu, with optional LLM explanations.
 
-🧪 **[Live demo](https://github.com/mikonoid/tfscout-demo)**: see real PR comments and drift issues, no AWS account needed.
+tfscout reads the plan file your pipeline already produces and reports what can go wrong. It runs inside
+your CI: there is no hosted service, it does not need cloud credentials of its own, and secrets are
+redacted before anything is sent to an LLM.
 
-📘 **[Setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md)**: what you need, AWS OIDC in 10 minutes, Jenkins/GitLab, troubleshooting.
+It has two modes:
 
-- 🔎 **`review`** reads `terraform plan` in a pull request and posts a single, auto-updated comment with what
-  changes, and what can break: data loss, open security groups, IAM wildcards, disabled encryption, forced
-  replacements, plus anything the AI notices.
-- 🧭 **`drift`** reads `terraform plan -refresh-only` on a schedule, classifies every drifted resource as
-  `noise`, `manual-change` or `risky`, explains it and suggests how to codify or revert it. Results go to one
-  GitHub issue per root module, which is updated when drift changes and closed when it is resolved.
+- `review` runs on pull requests. It posts one comment (updated on every push) listing the changes and the
+  risks: resources holding data that will be replaced or deleted (and the attribute that forces it),
+  ingress opened to the internet, IAM wildcards, encryption or deletion protection being turned off.
+- `drift` runs on a schedule against `terraform plan -refresh-only`. Each drifted resource is classified as
+  `risky`, `manual-change` or `noise`. Results go to a GitHub issue per root module, which is updated when
+  the drift changes and closed once it is gone.
 
-```
-plan ──► redact secrets ──► deterministic rules ──► LLM (optional) ──► PR comment / issue / JSON
-```
+The checks are deterministic rules. An LLM is optional: it adds a short summary and may raise additional
+findings or escalate severity, but it cannot downgrade what the rules found. Without an LLM
+(`provider: none`) you get the rule-based report.
 
-Deterministic rules are the baseline you can trust. The LLM adds a plain-English summary and extra findings,
-and can escalate but **never downgrade** a risky item. With `provider: none` tfscout works without any AI.
-
-## Example PR comment
-
-> ### 🔎 tfscout plan review — `prod`
-> ➕ create **2** · ✏️ update **2** · ♻️ replace **1**
->
-> - Recreates `orders-db` in another AZ
-> - Grants CI full admin
->
-> | | Severity | Resource | Finding |
-> |---|---|---|---|
-> | 🔴 | critical | `aws_db_instance.main` | Stateful resource will be REPLACED |
-> | 🔴 | critical | `aws_iam_policy.ci` | IAM policy allows Action "*" |
-> | 🔴 | critical | `aws_security_group.web` | Ingress opened to the internet (22/tcp) |
-> | 🟠 | high | `aws_db_instance.main` | Encryption disabled (`storage_encrypted`) |
-> | 🟠 | high | `aws_db_instance.main` | AZ move forces DB recreation 🤖 |
+See it on a real repository: [tfscout-demo](https://github.com/mikonoid/tfscout-demo)
+([example PR comment](https://github.com/mikonoid/tfscout-demo/pull/2)). Setup instructions, including
+AWS OIDC and non-GitHub CI, are in the [setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md).
 
 ## Quick start (GitHub Action)
 
-Already running `terraform plan` in GitHub Actions? Add one step. No new cloud credentials are needed.
-Otherwise see the [setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md).
+If you already run `terraform plan` in GitHub Actions, add one step after it. Otherwise start with the
+[setup guide](https://github.com/mikonoid/tfscout/blob/main/docs/setup.md).
 
 ### Pull request review
 
@@ -129,9 +114,9 @@ tfscout speaks the OpenAI-compatible `/chat/completions` API, so you can use any
 | `ollama` | free, local/self-hosted runner | none |
 | `custom` | — | any OpenAI-compatible endpoint (Azure AI Foundry, vLLM, LM Studio…) |
 
-## Security & privacy
+## Security and privacy
 
-- `terraform show -json` prints sensitive values **in clear text**. Before anything is sent to an LLM, tfscout
+- `terraform show -json` prints sensitive values in clear text. Before anything is sent to an LLM, tfscout
   applies Terraform's own `*_sensitive` masks and also redacts values by key name (`password`, `token`,
   `private_key`…) and by pattern (AWS keys, PEM keys, GitHub/Slack/OpenAI tokens, JWTs, DB URLs with
   credentials).

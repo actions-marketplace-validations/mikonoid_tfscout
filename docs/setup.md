@@ -15,7 +15,7 @@ your CI runner
        └─ posts a PR comment / drift issue via GITHUB_TOKEN
 ```
 
-**tfscout never touches your cloud.** Cloud access is needed only by Terraform to produce the plan, so
+tfscout does not access your cloud. Cloud access is needed only by Terraform to produce the plan, so
 tfscout reuses whatever your pipeline already has.
 
 | What | Needed by | Required? |
@@ -23,7 +23,7 @@ tfscout reuses whatever your pipeline already has.
 | Cloud read access (AWS/GCP/Azure) | `terraform plan` | yes, but you likely have it already |
 | Terraform state access | `terraform plan` | yes, same as above |
 | `GITHUB_TOKEN` | tfscout → comments/issues | provided automatically by GitHub Actions |
-| LLM API key | tfscout → AI summary | **no**. Without it you get rules-only reports |
+| LLM API key | tfscout → AI summary | no, without it you get rules-only reports |
 
 Pick your situation:
 
@@ -63,7 +63,7 @@ That's it: rules-only review, no extra secrets. To enable the AI summary, see [L
 
 ### 1. Let GitHub Actions log in to AWS (one time, no stored keys)
 
-GitHub Actions can assume an AWS role with short-lived credentials via **OIDC**, so no
+GitHub Actions can assume an AWS role with short-lived credentials via OIDC, so no
 `AWS_ACCESS_KEY_ID` secrets are needed. An admin applies this once:
 
 ```bash
@@ -73,7 +73,7 @@ terraform apply -var github_repo=my-org/infrastructure
 # → outputs role_arn = arn:aws:iam::123456789012:role/terraform-plan-readonly
 ```
 
-[examples/aws-oidc](../examples/aws-oidc/main.tf) creates the GitHub OIDC provider and a **read-only** role
+[examples/aws-oidc](../examples/aws-oidc/main.tf) creates the GitHub OIDC provider and a read-only role
 (`ReadOnlyAccess`) that only workflows of your repository can assume. Notes:
 
 - If the OIDC provider already exists in the account, add `-var create_oidc_provider=false`.
@@ -112,7 +112,7 @@ terraform plan -refresh-only -out=drift.tfplan
 tfscout drift drift.tfplan --exit-code           # exit 2 when actionable drift exists
 ```
 
-**Commenting on GitHub from Jenkins/other CI** works too. Export these and pass `--github-comment --pr N`
+You can also comment on GitHub from Jenkins or another CI. Export these and pass `--github-comment --pr N`
 (or `--github-issue` for drift):
 
 ```bash
@@ -155,8 +155,8 @@ chain that is used when a model is overloaded or times out.
   heuristics.
 - Never the state file, never credentials.
 
-⚠️ Resource names, ARNs and topology still leave your network. **Free tiers of some providers may use
-requests to improve their models.** For company infrastructure, use `provider: none`, a self-hosted model
+Resource names, ARNs and topology still leave your network, and free tiers of some providers may use
+requests to improve their models. For company infrastructure, use `provider: none`, a self-hosted model
 (`ollama`/`custom`), or a provider your organisation has approved.
 
 ---
@@ -173,7 +173,7 @@ requests to improve their models.** For company infrastructure, use `provider: n
 
 | Symptom | Fix |
 |---|---|
-| `Resource not accessible by integration` (HTTP 403) | Add the `permissions:` block above. PRs from **forks** get a read-only token: use `comment: "false"` for them. |
+| `Resource not accessible by integration` (HTTP 403) | Add the `permissions:` block above. PRs from forks get a read-only token: use `comment: "false"` for them. |
 | `--github-comment needs a pull_request event or --pr` | The review step ran on `push`; run it on `pull_request`, or pass `--pr`. |
 | `terraform show -json failed` / `not found` | Run tfscout in the same job after `terraform init`, with the same `working-directory`. For OpenTofu set `terraform-bin: tofu`. |
 | `AccessDenied` during `terraform plan` | The plan role lacks a read permission (e.g. `kms:Decrypt`, `secretsmanager:GetSecretValue`). This is Terraform, not tfscout. |
