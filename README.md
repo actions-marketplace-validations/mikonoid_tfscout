@@ -2,6 +2,9 @@
 
 **AI-assisted plan review and drift detection for Terraform / OpenTofu.**
 Runs entirely in your CI: no SaaS, no server, and your plans never leave the runner unredacted.
+**tfscout never touches your cloud.** It only reads the plan file your pipeline already produces.
+
+📘 **[Setup guide](docs/setup.md)**: what you need, AWS OIDC in 10 minutes, Jenkins/GitLab, troubleshooting.
 
 - 🔎 **`review`** reads `terraform plan` in a pull request and posts a single, auto-updated comment with what
   changes, and what can break: data loss, open security groups, IAM wildcards, disabled encryption, forced
@@ -34,6 +37,9 @@ and can escalate but **never downgrade** a risky item. With `provider: none` tfs
 > | 🟠 | high | `aws_db_instance.main` | AZ move forces DB recreation 🤖 |
 
 ## Quick start (GitHub Action)
+
+Already running `terraform plan` in GitHub Actions? Add one step. No new cloud credentials are needed.
+Otherwise see the [setup guide](docs/setup.md).
 
 ### Pull request review
 
@@ -85,6 +91,7 @@ steps:
 
 Full workflows with a matrix over several directories: [examples/review.yml](examples/review.yml),
 [examples/drift.yml](examples/drift.yml).
+One-time AWS OIDC role for CI without stored keys: [examples/aws-oidc](examples/aws-oidc/main.tf).
 
 ### Inputs
 
@@ -133,7 +140,7 @@ tfscout speaks the OpenAI-compatible `/chat/completions` API, so you can use any
 ## CLI
 
 ```bash
-pipx install tfscout          # or: pip install tfscout
+pip install git+https://github.com/mikonoid/tfscout   # PyPI package coming soon
 
 terraform plan -out=tfplan
 tfscout review tfplan                                  # rules only

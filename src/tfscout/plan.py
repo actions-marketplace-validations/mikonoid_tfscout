@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -84,8 +85,8 @@ def load_plan(path: str | Path, terraform_bin: str = "terraform", chdir: str | N
         raise PlanError(f"plan file not found: {p}")
     raw = p.read_bytes()
     try:
-        return parse_plan(json.loads(raw))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        return parse_plan(_extract_json(raw.decode("utf-8")))
+    except (ValueError, UnicodeDecodeError):
         pass
     try:
         proc = subprocess.run(
@@ -99,4 +100,19 @@ def load_plan(path: str | Path, terraform_bin: str = "terraform", chdir: str | N
         raise PlanError(f"`{terraform_bin}` not found; pass a JSON plan or set --terraform-bin") from e
     except subprocess.CalledProcessError as e:
         raise PlanError(f"`{terraform_bin} show -json` failed: {e.stderr.strip()}") from e
-    return parse_plan(json.loads(proc.stdout))
+    try:
+        return parse_plan(_extract_json(proc.stdout))
+    except ValueError as e:
+        raise PlanError(f"cannot parse `{terraform_bin} show -json` output: {e}") from e
+
+
+def _extract_json(text: str) -> Any:
+    """Parse JSON, tolerating extra lines such as those added by the hashicorp/setup-terraform wrapper."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r'\{\s*"format_version"', text)
+        if not m:
+            raise
+        obj, _ = json.JSONDecoder().raw_decode(text, m.start())
+        return obj

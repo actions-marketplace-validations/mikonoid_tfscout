@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from tfscout.plan import PlanError, load_plan, parse_plan
@@ -64,3 +66,12 @@ def test_secret_key_names_nested():
     assert v["env"][0]["DB_PASSWORD"] == REDACTED
     assert v["env"][0]["PORT"] == "5432"
     assert v["client_secret"] == REDACTED
+
+
+def test_load_json_with_setup_terraform_wrapper_noise(tmp_path):
+    plan = (Path(__file__).parent / "fixtures" / "plan_review.json").read_text()
+    noisy = tmp_path / "plan.json"
+    noisy.write_text(
+        "[command]/usr/bin/terraform show -json tfplan\n" + " ".join(plan.split()) + "\n::debug::exitcode: 0\n"
+    )
+    assert len(load_plan(noisy).changes) == 5
