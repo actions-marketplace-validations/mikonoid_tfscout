@@ -103,7 +103,8 @@ def test_drift_fingerprint_stable_and_ignores_noise(drift_plan):
 def test_drift_markdown(drift_plan):
     md = render_drift_md(run_drift(drift_plan, None), "qa")
     assert md.startswith("<!-- tfscout:drift:qa -->")
-    assert "`10.0.0.0/8`" in md or '`["10.0.0.0/8"]`' in md
+    assert "`ingress[-]`" in md and "`ingress[+]`" in md
+    assert "10.0.0.0/8" in md and "0.0.0.0/0" in md
     assert "fingerprint" in md
 
 

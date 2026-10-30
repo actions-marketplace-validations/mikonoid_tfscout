@@ -69,3 +69,14 @@ def test_drift_classification(drift_plan):
     assert [d.path for d in by["aws_instance.app"].diffs] == ["instance_type"]
     assert by["aws_ecs_service.api"].classification == "noise"
     assert by["aws_s3_bucket.old_logs"].classification == "risky"
+
+
+def test_object_lists_diff_as_sets():
+    https = {"from_port": 443, "to_port": 443, "cidr_blocks": ["10.0.0.0/8"]}
+    ssh = {"from_port": 22, "to_port": 22, "cidr_blocks": ["0.0.0.0/0"]}
+    d = diff({"ingress": [https], "name": "web"}, {"ingress": [ssh, https], "name": "web"})
+    assert [x.path for x in d] == ["ingress[+]"]
+    assert '"from_port": 22' in d[0].after
+    d = diff({"ingress": [https, ssh]}, {"ingress": [https]})
+    assert [(x.path, x.after) for x in d] == [("ingress[-]", None)]
+    assert diff({"ingress": [https]}, {"ingress": [dict(reversed(list(https.items())))]}) == []
