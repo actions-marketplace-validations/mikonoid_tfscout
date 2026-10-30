@@ -92,3 +92,11 @@ def test_pr_number_from_event(tmp_path, monkeypatch):
     ev.write_text(json.dumps({"pull_request": {"number": 42}}))
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
     assert pr_number_from_event() == 42
+
+
+def test_missing_api_key_falls_back_to_rules(monkeypatch, capsys):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("TFSCOUT_API_KEY", raising=False)
+    assert cli.main(["review", REVIEW, "--provider", "gemini"]) == 0
+    captured = capsys.readouterr()
+    assert "AI disabled" in captured.err and "rules only" in captured.out

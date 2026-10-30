@@ -161,6 +161,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         plan = load_plan(args.plan, args.terraform_bin, args.chdir)
+    except PlanError as e:
+        print(f"tfscout: error: {e}", file=sys.stderr)
+        return 1
+    try:
         client = make_client(
             args.provider,
             args.model,
@@ -169,9 +173,10 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             reasoning_effort=args.reasoning_effort,
         )
-    except (PlanError, LLMError) as e:
-        print(f"tfscout: error: {e}", file=sys.stderr)
-        return 1
+    except LLMError as e:
+        # e.g. secrets are not available to pull requests from forks: still produce the rules-only report
+        print(f"tfscout: warning: AI disabled: {e}", file=sys.stderr)
+        client = None
     if args.command == "review":
         return _cmd_review(args, plan, client)
     return _cmd_drift(args, plan, client)
