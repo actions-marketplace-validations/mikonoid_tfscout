@@ -21,6 +21,16 @@ variable "github_repo" {
   type        = string
 }
 
+variable "github_sub_prefix" {
+  description = <<-EOT
+    Repositories with immutable OIDC subjects get a `sub` like "repo:owner@123/repo@456:...".
+    Copy sub_claim_prefix from `gh api repos/OWNER/REPO/actions/oidc/customization/sub` if it differs
+    from "repo:OWNER/REPO". Both formats are trusted.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "role_name" {
   type    = string
   default = "terraform-plan-readonly"
@@ -41,7 +51,8 @@ variable "state_kms_key_arn" {
 data "aws_caller_identity" "current" {}
 
 locals {
-  oidc_host = "token.actions.githubusercontent.com"
+  sub_prefixes = distinct(compact(["repo:${var.github_repo}", var.github_sub_prefix]))
+  oidc_host    = "token.actions.githubusercontent.com"
   oidc_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : (
     "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${local.oidc_host}"
   )
@@ -69,7 +80,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringLike"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repo}:*"]
+      values   = [for p in local.sub_prefixes : "${p}:*"]
     }
   }
 }

@@ -77,6 +77,9 @@ terraform apply -var github_repo=my-org/infrastructure
 (`ReadOnlyAccess`) that only workflows of your repository can assume. Notes:
 
 - If the OIDC provider already exists in the account, add `-var create_oidc_provider=false`.
+- Newer repositories use immutable OIDC subjects (`repo:owner@123/repo@456:...`). Check with
+  `gh api repos/OWNER/REPO/actions/oidc/customization/sub`; if `use_immutable_subject` is true, add
+  `-var github_sub_prefix=<sub_claim_prefix>`.
 - If your state bucket uses a customer-managed KMS key, add `-var state_kms_key_arn=...`.
 - `ReadOnlyAccess` cannot read secret values. If your plan refreshes resources such as
   `aws_secretsmanager_secret_version`, grant those extra read permissions to the role.
@@ -176,6 +179,7 @@ requests to improve their models. For company infrastructure, use `provider: non
 | `Resource not accessible by integration` (HTTP 403) | Add the `permissions:` block above. PRs from forks get a read-only token: use `comment: "false"` for them. |
 | `--github-comment needs a pull_request event or --pr` | The review step ran on `push`; run it on `pull_request`, or pass `--pr`. |
 | `terraform show -json failed` / `not found` | Run tfscout in the same job after `terraform init`, with the same `working-directory`. For OpenTofu set `terraform-bin: tofu`. |
+| `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust policy doesn't match the token's `sub`. Usually the repository uses immutable OIDC subjects, see step B.1. |
 | `AccessDenied` during `terraform plan` | The plan role lacks a read permission (e.g. `kms:Decrypt`, `secretsmanager:GetSecretValue`). This is Terraform, not tfscout. |
 | `AI analysis skipped: ... 503 / no response` | The model is overloaded. Use a fallback chain, e.g. `model: gemini-flash-lite-latest,gemini-3.5-flash`, or raise `timeout`. The report still contains rule findings. |
 | `HTTP 404 ... model` | The model was retired. The error lists the available models; set `model`. |
