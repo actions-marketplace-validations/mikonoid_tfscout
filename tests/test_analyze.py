@@ -57,13 +57,13 @@ def test_review_falls_back_when_llm_fails(review_plan, fake_llm):
     r = run_review(review_plan, fake_llm(error=LLMError("boom")))
     assert r.ai_error == "boom" and not r.ai_used
     assert r.findings
-    assert "AI analysis unavailable" in render_review_md(r)
+    assert "AI analysis was unavailable" in render_review_md(r)
 
 
 def test_review_markdown(review_plan):
     md = render_review_md(run_review(review_plan, None), "prod")
     assert md.startswith("<!-- tfscout:review:prod -->")
-    assert "🔴" in md and "aws_db_instance.main" in md
+    assert "| critical | `aws_db_instance.main` |" in md
     assert "SuperSecret123!" not in md
 
 
@@ -131,3 +131,41 @@ def test_drift_ai_cannot_override_proven_noise(fake_llm):
     r = run_drift(Plan(drift=[role, empty], prior_resources=state), llm)
     assert [(i.resource, i.classification) for i in r.items] == [("aws_iam_role.ci", "noise")]
     assert '"classification_is_final": true' in llm.calls[0][1]
+
+
+def test_reports_have_no_emoji(review_plan, drift_plan):
+    import re
+
+    emoji = re.compile("[\U0001f300-\U0001faff\u2600-\u27bf\u2b00-\u2bff]")
+    assert not emoji.search(render_review_md(run_review(review_plan, None), "x"))
+    assert not emoji.search(render_drift_md(run_drift(drift_plan, None), "x"))
+
+
+def test_locked_noise_keeps_rule_explanation(fake_llm):
+    from tfscout.plan import Change, Resource
+
+    role = Change(
+        "aws_iam_role.ci",
+        "aws_iam_role",
+        "ci",
+        "",
+        ["update"],
+        before={"name": "ci", "managed_policy_arns": []},
+        after={"name": "ci", "managed_policy_arns": ["arn:p"]},
+    )
+    state = [Resource("a", "aws_iam_role_policy_attachment", {"role": "ci", "policy_arn": "arn:p"})]
+    llm = fake_llm(
+        {
+            "items": [
+                {
+                    "resource": "aws_iam_role.ci",
+                    "classification": "noise",
+                    "explanation": "added outside Terraform",
+                    "recommendation": "codify it",
+                }
+            ]
+        }
+    )
+    item = run_drift(Plan(drift=[role], prior_resources=state), llm).items[0]
+    assert "codify" not in item.recommendation and "outside" not in item.explanation
+    assert item.reason.startswith("Side effect")

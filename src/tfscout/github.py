@@ -21,7 +21,7 @@ class GitHubError(Exception):
 def _truncate(body: str) -> str:
     if len(body) <= MAX_BODY:
         return body
-    return body[: MAX_BODY - 200] + "\n\n…\n\n_Report truncated (GitHub size limit). See the workflow artifact._"
+    return body[: MAX_BODY - 200] + "\n\n...\n\n_Report truncated (GitHub size limit). See the workflow artifact._"
 
 
 @dataclass
@@ -99,7 +99,7 @@ class GitHub:
                 self._req(
                     "POST",
                     f"{base}/{issue['number']}/comments",
-                    {"body": "✅ Drift resolved — infrastructure matches Terraform state again."},
+                    {"body": "Drift resolved: infrastructure matches the Terraform state again."},
                 )
                 self._req("PATCH", f"{base}/{issue['number']}", {"state": "closed", "state_reason": "completed"})
                 return "closed", issue["html_url"]
@@ -112,7 +112,7 @@ class GitHub:
             self._req(
                 "POST",
                 f"{base}/{issue['number']}/comments",
-                {"body": f"🔄 Drift changed (fingerprint `{fingerprint}`). Report updated above."},
+                {"body": f"Drift changed (fingerprint `{fingerprint}`). The report above has been updated."},
             )
             return "updated", issue["html_url"]
         created = self._req("POST", base, {"title": title, "body": body, "labels": [DRIFT_LABEL]})

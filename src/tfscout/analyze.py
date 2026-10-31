@@ -230,7 +230,11 @@ def run_drift(plan: Plan, client: LLMClient | None) -> DriftReport:
         cls = str(ai.get("classification", "")).lower()
         # Rules are security-first: the model may escalate but never downgrade a risky item,
         # and never overrides a classification proven from state.
-        if cls in DRIFT_CLASSES and item.classification != "risky" and not item.locked:
+        if item.locked:
+            # Proven from state: keep the rule's explanation instead of the model's guess.
+            item.recommendation = "No action needed; Terraform manages this through another resource."
+            continue
+        if cls in DRIFT_CLASSES and item.classification != "risky":
             item.classification = cls
         item.explanation = str(ai.get("explanation", ""))[:1000]
         item.recommendation = str(ai.get("recommendation", ""))[:1500]
