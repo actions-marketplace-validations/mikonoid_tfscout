@@ -73,8 +73,14 @@ def test_drift_issue_lifecycle():
     assert gh.sync_drift_issue("<!-- m -->", "t", "body `abc`", "abc")[0] == "created"
     assert gh.calls[-1][2]["labels"] == [DRIFT_LABEL]
 
-    issue = {"number": 3, "body": "<!-- m --> fingerprint: `abc`", "html_url": "u"}
+    from tfscout import __version__
+
+    issue = {"number": 3, "body": f"<!-- m --> fingerprint: `abc` tfscout v{__version__}, rules", "html_url": "u"}
     assert FakeGitHub([issue]).sync_drift_issue("<!-- m -->", "t", "b", "abc")[0] == "unchanged"
+    old = {"number": 3, "body": "<!-- m --> fingerprint: `abc` tfscout v0.0.1, rules", "html_url": "u"}
+    gh = FakeGitHub([old])
+    assert gh.sync_drift_issue("<!-- m -->", "t", "b", "abc")[0] == "refreshed"
+    assert not any(c[1].endswith("/comments") and c[0] == "POST" for c in gh.calls)
     assert FakeGitHub([issue]).sync_drift_issue("<!-- m -->", "t", "b", "def")[0] == "updated"
     gh = FakeGitHub([issue])
     assert gh.sync_drift_issue("<!-- m -->", "t", "b", "")[0] == "closed"

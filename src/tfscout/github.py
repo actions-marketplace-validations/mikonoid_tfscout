@@ -10,6 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from tfscout import __version__
+
 MAX_BODY = 65000
 DRIFT_LABEL = "tfscout-drift"
 
@@ -106,8 +108,13 @@ class GitHub:
             return "none", ""
         body = _truncate(body)
         if issue:
-            if f"`{fingerprint}`" in (issue.get("body") or ""):
-                return "unchanged", issue["html_url"]
+            old_body = issue.get("body") or ""
+            if f"`{fingerprint}`" in old_body:
+                # Same drift. Re-render silently only if the report came from another tfscout version.
+                if f"v{__version__}," in old_body:
+                    return "unchanged", issue["html_url"]
+                self._req("PATCH", f"{base}/{issue['number']}", {"title": title, "body": body})
+                return "refreshed", issue["html_url"]
             self._req("PATCH", f"{base}/{issue['number']}", {"title": title, "body": body})
             self._req(
                 "POST",
